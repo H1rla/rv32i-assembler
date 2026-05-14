@@ -9,8 +9,8 @@
 ### 概要
 
 Common Lisp（SBCL）で実装したRV32Iアセンブラです。
-テキスト形式のアセンブリファイル（`.s`）を読み込み、RV32Iバイナリ（`.bin`）を生成します。
-自作RV32IエミュレータとセットでLisp Machineを構築するプロジェクトの一部です。
+テキスト形式のアセンブリファイル（`.s`）を読み込み、
+RV32Iバイナリ（`.bin`）を生成します。
 
 ### 特徴
 
@@ -85,9 +85,9 @@ input.s
 
 ### Overview
 
+
 A RV32I assembler implemented in Common Lisp (SBCL).
 Reads text-format assembly files (`.s`) and generates RV32I binaries (`.bin`).
-Part of a Lisp Machine project built on a self-made RV32I emulator.
 
 ### Features
 
