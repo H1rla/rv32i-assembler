@@ -37,6 +37,16 @@
 (defun load-inst-p (op)
   (member op *load-instructions* :test #'string=))
 
+;;; ラベル行かどうか判定（末尾が: かつスペースなし）
+(defun label-line-p (trimmed)
+  (and (> (length trimmed) 1)
+       (char= (char trimmed (1- (length trimmed))) #\:)
+       (not (find #\Space trimmed))))
+
+;;; ラベル名を取得（末尾の:を除去）
+(defun extract-label (trimmed)
+  (subseq trimmed 0 (1- (length trimmed))))
+
 ;;; トークン数チェック
 (defun check-token-count (tokens expected op)
   (unless (>= (length tokens) expected)
@@ -107,12 +117,57 @@
       ((eq type :ECALL)
        (list :type :ECALL :op op)))))
 
+;;; ラベルか即値かを判定して数値に変換
+(defun resolve-imm (imm-str current-addr label-table)
+  (let ((label-addr (gethash imm-str label-table)))
+    (if label-addr
+        ;; ラベルなら相対アドレスを計算
+        (- label-addr current-addr)
+        ;; 数値ならそのままparse
+        (handler-case
+            (parse-integer imm-str)
+          (error ()
+            (error "Unknown label or invalid immediate: ~A" imm-str))))))
+
+;;; 2パス方式でパース
+;;; 1パス目：ラベルテーブル構築 + 命令収集
+;;; 2パス目：ラベルを相対アドレスに解決
 (defun parse (filename)
-  (let ((lines (my-read-file filename)))
-    (remove nil
-      (mapcar (lambda (line)
-                (let ((trimmed (string-trim " " line)))
-                  (when (and (> (length trimmed) 0)
-                             (not (char= (char trimmed 0) #\;)))
-                    (parse-line (my-split trimmed)))))
-              lines))))
+  (let ((lines       (my-read-file filename))
+        (label-table (make-hash-table :test #'equal))
+        (raw-insts   '())
+        (addr        0))
+
+    ;; 1パス目
+    (dolist (line lines)
+      (let ((trimmed (string-trim " " line)))
+        (cond
+          ;; 空行・コメント行
+          ((or (= (length trimmed) 0)
+               (char= (char trimmed 0) #\;)))
+          ;; ラベル行
+          ((label-line-p trimmed)
+           (let ((label (extract-label trimmed)))
+             (when (gethash label label-table)
+               (error "Duplicate label: ~A" label))
+             (setf (gethash label label-table) addr)))
+          ;; 命令行
+          (t
+           (let ((parsed (parse-line (my-split trimmed))))
+             (when parsed
+               (push (cons addr parsed) raw-insts)
+               (incf addr 4)))))))
+
+    ;; 2パス目：ラベルを解決
+    (mapcar (lambda (entry)
+              (let ((inst-addr (car entry))
+                    (inst      (cdr entry)))
+                (let ((imm-str (getf inst :imm)))
+                  (if imm-str
+                      (let* ((resolved (resolve-imm imm-str inst-addr label-table))
+                             (new-inst (copy-list inst)))
+                        (setf (getf new-inst :imm)
+                              (write-to-string resolved))
+                        new-inst)
+                      inst))))
+            (nreverse raw-insts))))
